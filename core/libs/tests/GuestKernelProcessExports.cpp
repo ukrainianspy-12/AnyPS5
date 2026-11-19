@@ -54,6 +54,8 @@ int main(int argc, char** argv) {
         {"cpuset_setid_nid_postfix", "BiHHifIvX88"},
         {"rfork_thread_nid_postfix", "bSDxEpGzmUE"},
         {"sceKernelRdup", "LxIacrWiJ3w"},
+        {"getpid_nid_postfix", "HoLVWNanBBc"},
+        {"close_nid_postfix", "bY-PO6JhzhQ"},
     };
     bool found = true;
     for (const auto& entry : exports) found = FindSymbol(kernel, patched ? entry.nid : entry.name) != nullptr && found;
@@ -66,5 +68,17 @@ int main(int argc, char** argv) {
     int setid = -1;
     Require(getId(LevelRoot, WhichProcess, -1, &setid) == 0 && setid == 0);
     Require(getId(LevelCpuset, WhichProcess, -1, &setid) == 0 && setid == 1);
+    using Self = int (APS5_VABI*)();
+    using Rdup = int (APS5_VABI*)(int, int);
+    using Close = int (APS5_VABI*)(int);
+    const auto self = reinterpret_cast<Self>(FindSymbol(kernel, patched ? "HoLVWNanBBc" : "getpid_nid_postfix"));
+    const auto rdup = reinterpret_cast<Rdup>(FindSymbol(kernel, patched ? "LxIacrWiJ3w" : "sceKernelRdup"));
+    const auto close = reinterpret_cast<Close>(FindSymbol(kernel, patched ? "bY-PO6JhzhQ" : "close_nid_postfix"));
+    Require(self != nullptr && rdup != nullptr && close != nullptr);
+    constexpr int StandardOutput = 1;
+    const int duplicate = rdup(self(), StandardOutput);
+    Require(duplicate >= 0 && duplicate != StandardOutput);
+    Require(close(duplicate) == 0);
+    Require(rdup(self(), -1) < 0);
     return 0;
 }

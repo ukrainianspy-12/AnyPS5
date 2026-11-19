@@ -23,8 +23,9 @@ int APS5_VABI rfork_thread_nid_postfix(int flags, void* stack, int (APS5_VABI* f
 }
 
 int APS5_VABI sceKernelRdup(int pid, int fd) {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+    if (pid != getpid_nid_postfix())
+        NotImplemented_nid_no_patch(__func__);
+    return dup_nid_postfix(fd);
 }
 
 APS5_EXPORT("aAQZSjb2fho", sceKernelUnknown16);
