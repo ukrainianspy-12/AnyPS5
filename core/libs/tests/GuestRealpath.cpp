@@ -194,6 +194,14 @@ int main() {
         Require(Fails((guest + "/long-0").c_str(), 62));
     }
 #ifdef _WIN32
+    const auto junction = directory / "junction";
+    const auto junctionTarget = directory / "sub";
+    const auto junctionCommand = L"cmd /c mklink /J \"" + junction.wstring() + L"\" \"" + junctionTarget.wstring() + L"\" >nul";
+    Require(_wsystem(junctionCommand.c_str()) == 0);
+    Require(Resolves(guest + "/junction", guest + "/sub"));
+    Require(Resolves(guest + "/junction/inner.txt", guest + "/sub/inner.txt"));
+    Require(Resolves(guest + "/junction/../file.txt", guest + "/file.txt"));
+    Require(RemoveDirectoryW(junction.c_str()) != 0);
     for (const auto& link : files) DeleteFileW(link.c_str());
     for (const auto& link : directories) RemoveDirectoryW(link.c_str());
 #endif

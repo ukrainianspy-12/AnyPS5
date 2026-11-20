@@ -3,6 +3,7 @@
 #include "prx/libc/include/General.hpp"
 #include "prx/libc/include/general/VabiMacros.hpp"
 #ifdef _WIN32
+#include "prx/libkernel/File/include/WindowsSymbolicLink.hpp"
 #include <windows.h>
 #include <winioctl.h>
 #endif
@@ -81,6 +82,17 @@ bool ReadGuestLink(const std::filesystem::path& host, std::string& target, bool&
     CloseHandle(handle);
     if (!read || size < sizeof(header)) return true;
     std::memcpy(&header, data.data(), sizeof(header));
+    if (header.tag == IO_REPARSE_TAG_MOUNT_POINT) {
+        std::string hostTarget;
+        try {
+            if (!File::WindowsSymbolicLink::ReadJunction(host, hostTarget, "realpath")) return true;
+        } catch (...) {
+            return false;
+        }
+        if (!GuestPathForHost_nid_no_patch(hostTarget, target)) return true;
+        isLink = true;
+        return true;
+    }
     if (header.tag != IO_REPARSE_TAG_SYMLINK) return true;
     constexpr ULONG relativeFlag = 1;
     if ((header.flags & relativeFlag) == 0) {
@@ -180,6 +192,19 @@ bool ResolveGuest(const char* path, std::string& result, int& error) {
                 return false;
             }
             DropLastComponent(result);
+            if (IsSeparator(target.front())) {
+                result = "/";
+                if (moreFollows) {
+                    if (!IsSeparator(target.back())) target += '/';
+                    target += left;
+                    if (target.size() >= PathMax) {
+                        error = NameTooLong;
+                        return false;
+                    }
+                }
+                left = target.substr(1);
+                continue;
+            }
             if (moreFollows) {
                 if (!IsSeparator(target.back())) {
                     if (target.size() + 1 >= PathMax) {
