@@ -1,10 +1,13 @@
 #include "prx/libc/include/general/VabiMacros.hpp"
+#include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <source_location>
+#include <thread>
 #ifdef _WIN32
 #include <windows.h>
 #else
@@ -39,6 +42,17 @@ static void* FindSymbol(void* module, const char* name) {
     return symbol;
 }
 
+#ifdef _WIN32
+struct RforkMarker {
+    std::atomic<int> Value{0};
+};
+
+static int APS5_VABI RforkChild(void* argument) {
+    static_cast<RforkMarker*>(argument)->Value.store(0x5eed, std::memory_order_release);
+    return 7;
+}
+#endif
+
 int main(int argc, char** argv) {
     Require(argc == 3);
     const auto directory = std::filesystem::absolute(argv[1]);
@@ -66,5 +80,21 @@ int main(int argc, char** argv) {
     int setid = -1;
     Require(getId(LevelRoot, WhichProcess, -1, &setid) == 0 && setid == 0);
     Require(getId(LevelCpuset, WhichProcess, -1, &setid) == 0 && setid == 1);
+    using Rfork = int (APS5_VABI*)(int, void*, int (APS5_VABI*)(void*), void*);
+    const auto rfork = reinterpret_cast<Rfork>(FindSymbol(kernel, patched ? "bSDxEpGzmUE" : "rfork_thread_nid_postfix"));
+    Require(rfork != nullptr);
+#ifdef _WIN32
+    constexpr std::size_t StackBytes = 1u << 20;
+    auto* const stack = static_cast<char*>(VirtualAlloc(nullptr, StackBytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+    Require(stack != nullptr);
+    RforkMarker marker;
+    const int child = rfork(0x1030, stack + StackBytes, RforkChild, &marker);
+    Require(child > 0);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (marker.Value.load(std::memory_order_acquire) != 0x5eed && std::chrono::steady_clock::now() < deadline)
+        std::this_thread::yield();
+    Require(marker.Value.load(std::memory_order_acquire) == 0x5eed);
+    Require(VirtualFree(stack, 0, MEM_RELEASE) != 0);
+#endif
     return 0;
 }
