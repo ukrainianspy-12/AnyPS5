@@ -160,8 +160,9 @@ int main() {
         Require(Resolves(guest + "/directory-link/", guest + "/sub"));
         directories.push_back(directory / "absolute-link");
         Require(createLink(directory / "absolute-link", (directory / "sub").string(), true));
-        Require(Resolves(guest + "/absolute-link/inner.txt", guest + "/absolute-link/inner.txt"));
-        Require(Resolves(guest + "/absolute-link/up-link", guest + "/absolute-link/up-link"));
+        Require(Resolves(guest + "/absolute-link", guest + "/sub"));
+        Require(Resolves(guest + "/absolute-link/inner.txt", guest + "/sub/inner.txt"));
+        Require(Resolves(guest + "/absolute-link/up-link", guest + "/file.txt"));
         Require(Fails((guest + "/dangling-link").c_str(), 2, guest + "/missing"));
         Require(Fails((guest + "/dangling-link/x").c_str(), 2, guest + "/missing"));
         Require(Fails((guest + "/loop-a").c_str(), 62));
