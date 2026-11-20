@@ -160,10 +160,20 @@ int main() {
         Require(Resolves(guest + "/directory-link/", guest + "/sub"));
         directories.push_back(directory / "absolute-link");
         Require(createLink(directory / "absolute-link", (directory / "sub").string(), true));
+#ifdef _WIN32
+        Require(Resolves(guest + "/absolute-link", guest + "/sub"));
+        Require(Resolves(guest + "/absolute-link/inner.txt", guest + "/sub/inner.txt"));
+        Require(Resolves(guest + "/absolute-link/up-link", guest + "/file.txt"));
+#else
         Require(Resolves(guest + "/absolute-link/inner.txt", guest + "/absolute-link/inner.txt"));
         Require(Resolves(guest + "/absolute-link/up-link", guest + "/absolute-link/up-link"));
+#endif
         Require(std::filesystem::create_directories(directory / "sub" / "nested"));
+#ifdef _WIN32
+        Require(Resolves(guest + "/absolute-link/nested/../up-link", guest + "/file.txt"));
+#else
         Require(Resolves(guest + "/absolute-link/nested/../up-link", guest + "/absolute-link/up-link"));
+#endif
         Require(Resolves(guest + "/absolute-link/../file-link", guest + "/file.txt"));
         Require(Resolves(guest + "/absolute-link/../directory-link/inner.txt", guest + "/sub/inner.txt"));
         Require(Fails((guest + "/absolute-link/../dangling-link").c_str(), 2, guest + "/missing"));
