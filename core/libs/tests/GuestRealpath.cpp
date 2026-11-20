@@ -202,10 +202,51 @@ int main() {
     Require(Resolves(guest + "/junction/inner.txt", guest + "/sub/inner.txt"));
     Require(Resolves(guest + "/junction/../file.txt", guest + "/file.txt"));
     Require(RemoveDirectoryW(junction.c_str()) != 0);
+    const auto outside = host / (name + "-outside");
+    const auto outsideSub = outside / "sub";
+    Require(std::filesystem::create_directories(outsideSub));
+    { std::ofstream file(outsideSub / "inner.txt"); file << "outside"; }
+    AddPathAlias_nid_no_patch("realpath-junction-alias", outside.string().c_str());
+    const auto aliasJunction = directory / "alias-junction";
+    const auto aliasJunctionCommand = L"cmd /c mklink /J \"" + aliasJunction.wstring() + L"\" \"" + outsideSub.wstring() + L"\" >nul";
+    Require(_wsystem(aliasJunctionCommand.c_str()) == 0);
+    {
+        char debugOut[1024];
+        const char* debugValue = realpath_nid_postfix((guest + "/alias-junction").c_str(), debugOut) ? debugOut : "NULL";
+    }
+    Require(Resolves(guest + "/alias-junction", "/realpath-junction-alias/sub"));
+    Require(Resolves(guest + "/alias-junction/inner.txt", "/realpath-junction-alias/sub/inner.txt"));
+    Require(RemoveDirectoryW(aliasJunction.c_str()) != 0);
+    RemovePathAlias_nid_no_patch("realpath-junction-alias");
+    const auto inRootAlias = directory / "alias-target";
+    Require(std::filesystem::create_directories(inRootAlias));
+    { std::ofstream file(inRootAlias / "inner.txt"); file << "alias"; }
+    AddPathAlias_nid_no_patch("realpath-inroot-alias", inRootAlias.string().c_str());
+    const auto inRootJunction = directory / "inroot-junction";
+    const auto inRootCommand = L"cmd /c mklink /J \"" + inRootJunction.wstring() + L"\" \"" + inRootAlias.wstring() + L"\" >nul";
+    Require(_wsystem(inRootCommand.c_str()) == 0);
+    Require(Resolves(guest + "/inroot-junction", "/realpath-inroot-alias"));
+    Require(RemoveDirectoryW(inRootJunction.c_str()) != 0);
+    RemovePathAlias_nid_no_patch("realpath-inroot-alias");
+    const auto plainOutside = std::filesystem::temp_directory_path() / (name + "-outside-root");
+    Require(std::filesystem::create_directories(plainOutside));
+    const auto outsideJunction = directory / "outside-junction";
+    const auto outsideCommand = L"cmd /c mklink /J \"" + outsideJunction.wstring() + L"\" \"" + plainOutside.wstring() + L"\" >nul";
+    Require(_wsystem(outsideCommand.c_str()) == 0);
+    {
+        char debugOut[1024];
+        const char* debugValue = realpath_nid_postfix((guest + "/outside-junction").c_str(), debugOut) ? debugOut : "NULL";
+    }
+    Require(Resolves(guest + "/outside-junction", guest + "/outside-junction"));
+    Require(RemoveDirectoryW(outsideJunction.c_str()) != 0);
     for (const auto& link : files) DeleteFileW(link.c_str());
     for (const auto& link : directories) RemoveDirectoryW(link.c_str());
 #endif
 
     std::filesystem::remove_all(directory);
+#ifdef _WIN32
+    std::filesystem::remove_all(outside);
+    std::filesystem::remove_all(plainOutside);
+#endif
     return 0;
 }
