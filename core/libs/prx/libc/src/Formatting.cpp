@@ -300,6 +300,25 @@ public:
     const char* Remaining() const { return position; }
 
     int Scan(const char* directive, bool suppress, void* target, int* consumed) const {
+        std::string adjusted;
+        const char* conversion = std::strpbrk(directive, "aAeEfFgG");
+        if (conversion != nullptr) {
+            const char* digits = directive + 1;
+            if (*digits == '*') ++digits;
+            unsigned long width = 0;
+            const char* afterDigits = digits;
+            while (afterDigits < conversion && std::isdigit(static_cast<unsigned char>(*afterDigits))) {
+                width = width * 10 + static_cast<unsigned long>(*afterDigits - '0');
+                ++afterDigits;
+            }
+            const unsigned long exponent = IncompleteExponentWidth(position, width);
+            if (exponent != 0 && (width == 0 || exponent < width)) {
+                adjusted.assign(directive, digits);
+                adjusted += std::to_string(exponent);
+                adjusted.append(afterDigits);
+                directive = adjusted.c_str();
+            }
+        }
         return suppress ? HostSscanf(position, directive, consumed) : HostSscanf(position, directive, target, consumed);
     }
 };
@@ -549,22 +568,16 @@ int ScanSource(TSource source, const char* format, bool secure, NextPointer next
         }
         const bool narrowInteger = !suppress && std::strchr("diouxX", conversion) != nullptr && (length.empty() || length == "h" || length == "hh");
         std::uint64_t wideInteger = 0;
-        const bool floating = std::strchr("aAeEfFgG", conversion) != nullptr;
-        if constexpr (TSource::Contiguous) {
-            if (floating || std::strchr("xXip", conversion) != nullptr) {
-                const HexPrefix prefix = CheckHexPrefix(source.Remaining(), width, floating);
-                if (prefix == HexPrefix::InputFailure) return finish(converted ? assigned : EOF);
-                if (prefix == HexPrefix::MatchingFailure) return finish(assigned);
-            }
-            if (floating) {
-                const unsigned long exponent = IncompleteExponentWidth(source.Remaining(), width);
-                if (exponent != 0 && (width == 0 || exponent < width)) width = exponent;
-            }
-        }
         if (width != 0) directive += std::to_string(width);
         directive += narrowInteger ? std::string("ll") : HostLength(length, conversion);
         directive += specifier;
         directive += "%n";
+        const bool floating = std::strchr("aAeEfFgG", conversion) != nullptr;
+        if constexpr (TSource::Contiguous) if (floating || std::strchr("xXip", conversion) != nullptr) {
+            const HexPrefix prefix = CheckHexPrefix(source.Remaining(), width, floating);
+            if (prefix == HexPrefix::InputFailure) return finish(converted ? assigned : EOF);
+            if (prefix == HexPrefix::MatchingFailure) return finish(assigned);
+        }
         const int savedError = errno;
         int consumed = -1;
         const int matched = source.Scan(directive.c_str(), suppress, narrowInteger ? &wideInteger : target, &consumed);
