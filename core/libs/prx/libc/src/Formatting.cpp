@@ -246,6 +246,21 @@ HexPrefix CheckHexPrefix(const char* field, unsigned long width, bool floating) 
     return ended && !sign ? HexPrefix::InputFailure : HexPrefix::MatchingFailure;
 }
 
+unsigned long IncompleteExponentWidth(const char* field, unsigned long width) {
+    const unsigned long limit = width == 0 ? ULONG_MAX : width;
+    unsigned long index = field[0] == '+' || field[0] == '-' ? 1 : 0;
+    bool digits = false;
+    while (index < limit && std::isdigit(static_cast<unsigned char>(field[index]))) {
+        digits = true;
+        ++index;
+    }
+    if (!digits || index >= limit || (field[index] != 'e' && field[index] != 'E')) return 0;
+    const unsigned long exponent = index;
+    ++index;
+    if (index < limit && (field[index] == '+' || field[index] == '-')) ++index;
+    return index < limit && std::isdigit(static_cast<unsigned char>(field[index])) ? 0 : exponent;
+}
+
 bool DecimalOutOfRange(const std::string& field) {
     if (field.find_first_of("xX") != std::string::npos) return false;
     if (field.find_first_of("eE") == std::string::npos && field.size() < static_cast<std::size_t>(std::numeric_limits<long double>::max_exponent10)) return false;
@@ -534,16 +549,22 @@ int ScanSource(TSource source, const char* format, bool secure, NextPointer next
         }
         const bool narrowInteger = !suppress && std::strchr("diouxX", conversion) != nullptr && (length.empty() || length == "h" || length == "hh");
         std::uint64_t wideInteger = 0;
+        const bool floating = std::strchr("aAeEfFgG", conversion) != nullptr;
+        if constexpr (TSource::Contiguous) {
+            if (floating || std::strchr("xXip", conversion) != nullptr) {
+                const HexPrefix prefix = CheckHexPrefix(source.Remaining(), width, floating);
+                if (prefix == HexPrefix::InputFailure) return finish(converted ? assigned : EOF);
+                if (prefix == HexPrefix::MatchingFailure) return finish(assigned);
+            }
+            if (floating) {
+                const unsigned long exponent = IncompleteExponentWidth(source.Remaining(), width);
+                if (exponent != 0 && (width == 0 || exponent < width)) width = exponent;
+            }
+        }
         if (width != 0) directive += std::to_string(width);
         directive += narrowInteger ? std::string("ll") : HostLength(length, conversion);
         directive += specifier;
         directive += "%n";
-        const bool floating = std::strchr("aAeEfFgG", conversion) != nullptr;
-        if constexpr (TSource::Contiguous) if (floating || std::strchr("xXip", conversion) != nullptr) {
-            const HexPrefix prefix = CheckHexPrefix(source.Remaining(), width, floating);
-            if (prefix == HexPrefix::InputFailure) return finish(converted ? assigned : EOF);
-            if (prefix == HexPrefix::MatchingFailure) return finish(assigned);
-        }
         const int savedError = errno;
         int consumed = -1;
         const int matched = source.Scan(directive.c_str(), suppress, narrowInteger ? &wideInteger : target, &consumed);

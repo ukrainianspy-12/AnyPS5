@@ -1,0 +1,5 @@
+# libc
+
+## change [The scanf family](../../../core/libs/prx/libc/include/WindowsScanning.hpp) (libc) on Windows returns 0
+
+- [The scanf family](../../../core/libs/prx/libc/src/Formatting.cpp) (libc) on Windows returns 0, as C17 and FreeBSD do, when input fails after only suppressed conversions have completed (`sscanf("12", "%*d%d", &value)`). On Linux, ordinary formats without a narrow `%c` still go to glibc, which returns `EOF` there. On Windows the host stops a `%x`, `%X`, `%i` or `%p` after the `x` of a `0x` that no hex digit follows (or that the width cuts off), where C17 and FreeBSD stop before the `x`. A floating conversion whose decimal exponent has no digits (`1e`, `1e+`, `1eZ`) now stops before the `e` for contiguous inputs, as C17 and FreeBSD do: the host scanner receives a width covering only the mantissa, so the `e` remains for the next conversion. Stream forms keep their earlier behavior. On Linux a float conversion of `0x.` or `nan(` follows the host glibc: glibc 2.44 makes both a matching failure, glibc 2.39 converts `0x.` to 0 and `nan(` to NaN and leaves the `(` for the next conversion; the console's result is not measured

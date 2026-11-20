@@ -124,6 +124,20 @@ static void CheckFloatingScanRange() {
     Require(scan("1e300") == std::pair{1, 0});
 }
 
+static void CheckIncompleteExponentScan() {
+    double value = -1.0;
+    Require(sscanf_nid_postfix("1e", "%lf", &value) == 1 && value == 1.0);
+    value = -1.0;
+    Require(sscanf_nid_postfix("1e+", "%lf", &value) == 1 && value == 1.0);
+    value = -1.0;
+    char next = 'Z';
+    Require(sscanf_nid_postfix("1eZ", "%lf%c", &value, &next) == 2 && value == 1.0 && next == 'e');
+    value = -1.0;
+    Require(sscanf_nid_postfix("1.5e", "%3lf", &value) == 1 && value == 1.5);
+    value = -1.0;
+    Require(sscanf_nid_postfix("1e2", "%lf", &value) == 1 && value == 100.0);
+}
+
 static int APS5_VABI PrintList(const char* format, ...) {
     __builtin_sysv_va_list args;
     __builtin_sysv_va_start(args, format);
@@ -1043,6 +1057,7 @@ int main(int argc, char** argv) {
     CheckPositionalUnknownConversion();
     CheckSecureCountBeforeInputFailure();
     CheckFloatingScanRange();
+    CheckIncompleteExponentScan();
     CheckSizeLimits();
     CheckIgnoredLengths();
     RunChecks();
