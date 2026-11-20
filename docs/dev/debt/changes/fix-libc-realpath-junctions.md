@@ -1,0 +1,5 @@
+# libc
+
+## change [realpath]
+
+- [realpath](../../../core/libs/prx/libc/src/RealPath.cpp) (libc) follows FreeBSD 11's [`realpath.c`](https://github.com/freebsd/freebsd-src/blob/stable/11/lib/libc/stdlib/realpath.c) with two gaps. A host symbolic link with a relative target under the guest root is expanded as `realpath1` does (a dangling link fails with `ENOENT`, more than 32 links with `ELOOP`); an absolute target is not expanded, nor is anything below it, because the target is a host path with no guest path to map to. Windows junctions whose target lies under the guest root or a path alias are now expanded as links through `GuestPathForHost_nid_no_patch`, including below the junction and across `..`; a junction whose target is outside those roots stays unexpanded. Expansion works on the guest path, so a host link whose text climbs above a path alias root is resolved against the guest tree, not the host one. Otherwise `..` drops the previous component lexically, as `Resolve` does for every guest path.
