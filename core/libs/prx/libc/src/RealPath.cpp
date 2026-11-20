@@ -96,7 +96,17 @@ bool ReadGuestLink(const std::filesystem::path& host, std::string& target, bool&
     if (header.tag != IO_REPARSE_TAG_SYMLINK) return true;
     constexpr ULONG relativeFlag = 1;
     if ((header.flags & relativeFlag) == 0) {
-        absolute = true;
+        std::string hostTarget;
+        try {
+            if (!File::WindowsSymbolicLink::Read(host, hostTarget, "realpath")) return true;
+        } catch (...) {
+            return false;
+        }
+        if (!GuestPathForHost_nid_no_patch(hostTarget, target)) {
+            absolute = true;
+            return true;
+        }
+        isLink = true;
         return true;
     }
     isLink = true;
