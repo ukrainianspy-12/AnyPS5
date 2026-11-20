@@ -368,42 +368,61 @@ std::filesystem::path HostPath(WorkingDirectory& state, const std::vector<std::s
     return ResolveHostPath(state.root, names, module).make_preferred();
 }
 extern "C" bool GuestPathForHost_nid_no_patch(const std::filesystem::path& host, std::string& guest) {
-    const auto lower = [](std::string value) {
+    const auto canonical = [](const std::filesystem::path& path, std::string& result) {
+        std::error_code code;
+        result = std::filesystem::weakly_canonical(path, code).generic_string();
+        return !code && !result.empty();
+    };
+    const auto normalize = [](std::string value) {
+#ifdef _WIN32
         std::transform(value.begin(), value.end(), value.begin(), [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
+#endif
+        while (value.size() > 1 && value.back() == '/') value.pop_back();
         return value;
     };
-    const auto under = [&](const std::filesystem::path& root, const std::filesystem::path& path, std::filesystem::path& relative) {
-        std::error_code code;
-        const auto originalBase = std::filesystem::weakly_canonical(root, code).generic_string();
-        const auto originalFull = std::filesystem::weakly_canonical(path, code).generic_string();
-        const auto base = lower(originalBase);
-        const auto full = lower(originalFull);
-        if (full == base) {
+    std::string full;
+    if (!canonical(host, full)) return false;
+    const auto comparableFull = normalize(full);
+    const auto under = [&](const std::filesystem::path& root, std::filesystem::path& relative) {
+        std::string originalBase;
+        if (!canonical(root, originalBase)) return false;
+        auto trimmedBase = originalBase;
+        while (trimmedBase.size() > 1 && trimmedBase.back() == '/') trimmedBase.pop_back();
+        const auto base = normalize(trimmedBase);
+        if (comparableFull == base) {
             relative.clear();
             return true;
         }
-        if (full.size() > base.size() && full.compare(0, base.size(), base) == 0 && full[base.size()] == '/') {
-            relative = std::filesystem::path(originalFull.substr(originalBase.size() + 1));
+        if (comparableFull.size() > base.size() && comparableFull.compare(0, base.size(), base) == 0 && comparableFull[base.size()] == '/') {
+            relative = std::filesystem::path(full.substr(trimmedBase.size() + 1));
             return true;
         }
         return false;
     };
-    std::error_code code;
-    const auto target = std::filesystem::weakly_canonical(host, code);
-    std::filesystem::path relative;
-    if (under(Directories().root, target, relative)) {
-        guest = "/" + relative.generic_string();
-        return true;
-    }
+    std::string bestPrefix;
+    std::filesystem::path bestRelative;
+    bool foundAlias = false;
     auto& aliases = Aliases();
-    std::lock_guard lock(aliases.mutex);
-    for (const auto& [prefix, hostPath] : aliases.entries) {
-        if (!under(std::filesystem::path(hostPath), target, relative)) continue;
-        guest = "/" + prefix;
-        if (!relative.empty()) guest += "/" + relative.generic_string();
+    {
+        std::lock_guard lock(aliases.mutex);
+        for (const auto& [prefix, hostPath] : aliases.entries) {
+            std::filesystem::path relative;
+            if (!under(std::filesystem::path(hostPath), relative)) continue;
+            if (foundAlias && prefix.size() <= bestPrefix.size()) continue;
+            bestPrefix = prefix;
+            bestRelative = relative;
+            foundAlias = true;
+        }
+    }
+    if (foundAlias) {
+        guest = "/" + bestPrefix;
+        if (!bestRelative.empty()) guest += "/" + bestRelative.generic_string();
         return true;
     }
-    return false;
+    std::filesystem::path relative;
+    if (!under(Directories().root, relative)) return false;
+    guest = "/" + relative.generic_string();
+    return true;
 }
 
 void RequireHostDirectory(WorkingDirectory& state, const std::vector<std::string>& names) {
