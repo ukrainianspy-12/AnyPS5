@@ -384,12 +384,13 @@ extern "C" bool GuestPathForHost_nid_no_patch(const std::filesystem::path& host,
     std::string full;
     if (!canonical(host, full)) return false;
     const auto comparableFull = normalize(full);
-    const auto under = [&](const std::filesystem::path& root, std::filesystem::path& relative) {
+    const auto under = [&](const std::filesystem::path& root, std::filesystem::path& relative, std::size_t& rootLength) {
         std::string originalBase;
         if (!canonical(root, originalBase)) return false;
         auto trimmedBase = originalBase;
         while (trimmedBase.size() > 1 && trimmedBase.back() == '/') trimmedBase.pop_back();
         const auto base = normalize(trimmedBase);
+        rootLength = base.size();
         if (comparableFull == base) {
             relative.clear();
             return true;
@@ -402,16 +403,19 @@ extern "C" bool GuestPathForHost_nid_no_patch(const std::filesystem::path& host,
     };
     std::string bestPrefix;
     std::filesystem::path bestRelative;
+    std::size_t bestRootLength = 0;
     bool foundAlias = false;
     auto& aliases = Aliases();
     {
         std::lock_guard lock(aliases.mutex);
         for (const auto& [prefix, hostPath] : aliases.entries) {
             std::filesystem::path relative;
-            if (!under(std::filesystem::path(hostPath), relative)) continue;
-            if (foundAlias && prefix.size() <= bestPrefix.size()) continue;
+            std::size_t rootLength = 0;
+            if (!under(std::filesystem::path(hostPath), relative, rootLength)) continue;
+            if (foundAlias && rootLength <= bestRootLength) continue;
             bestPrefix = prefix;
             bestRelative = relative;
+            bestRootLength = rootLength;
             foundAlias = true;
         }
     }
@@ -421,7 +425,8 @@ extern "C" bool GuestPathForHost_nid_no_patch(const std::filesystem::path& host,
         return true;
     }
     std::filesystem::path relative;
-    if (!under(Directories().root, relative)) return false;
+    std::size_t rootLength = 0;
+    if (!under(Directories().root, relative, rootLength)) return false;
     guest = "/" + relative.generic_string();
     return true;
 }
