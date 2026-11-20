@@ -40,13 +40,13 @@ extern "C" int CopyGuestString_nid_no_patch(const char* source, std::size_t maxi
 extern "C" int CopyGuestPath_nid_no_patch(const char* source, std::string& destination);
 
 extern "C" std::filesystem::path ResolvePath_nid_no_patch(const char* path);
-extern "C" bool GuestPathForHost_nid_no_patch(const std::filesystem::path& host, std::string& guest);
 extern "C" bool GuestWritable_nid_no_patch(void* destination, std::size_t bytes);
 extern "C" bool GuestCopyOut_nid_no_patch(void* destination, const void* source, std::size_t bytes);
 extern "C" bool GuestCopyOutRows_nid_no_patch(void* destination, std::size_t destinationPitch, const void* source, std::size_t sourcePitch, std::size_t rowBytes, std::size_t rows);
 extern "C" bool GuestCopyIn_nid_no_patch(void* destination, const void* source, std::size_t bytes);
 extern "C" void GuestFaultCopyReinstall_nid_no_patch();
 extern "C" bool GuestCopyInUnsynced_nid_no_patch(void* destination, const void* source, std::size_t bytes);
+extern "C" bool GuestPathForHost_nid_no_patch(const std::filesystem::path& host, std::string& guest);
 extern "C" std::filesystem::path ResolvePathOrRelinkedModule_nid_no_patch(const char* path);
 extern "C" std::filesystem::path ResolveArchivedPath_nid_no_patch(const char* path, bool module = false);
 extern "C" std::filesystem::path ResolveDiskPath_nid_no_patch(const char* path);

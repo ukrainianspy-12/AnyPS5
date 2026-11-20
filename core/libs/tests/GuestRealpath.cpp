@@ -211,10 +211,6 @@ int main() {
     const auto aliasJunction = directory / "alias-junction";
     const auto aliasJunctionCommand = L"cmd /c mklink /J \"" + aliasJunction.wstring() + L"\" \"" + outsideSub.wstring() + L"\" >nul";
     Require(_wsystem(aliasJunctionCommand.c_str()) == 0);
-    {
-        char debugOut[1024];
-        const char* debugValue = realpath_nid_postfix((guest + "/alias-junction").c_str(), debugOut) ? debugOut : "NULL";
-    }
     Require(Resolves(guest + "/alias-junction", "/realpath-junction-alias/sub"));
     Require(Resolves(guest + "/alias-junction/inner.txt", "/realpath-junction-alias/sub/inner.txt"));
     Require(RemoveDirectoryW(aliasJunction.c_str()) != 0);
@@ -234,12 +230,33 @@ int main() {
     const auto outsideJunction = directory / "outside-junction";
     const auto outsideCommand = L"cmd /c mklink /J \"" + outsideJunction.wstring() + L"\" \"" + plainOutside.wstring() + L"\" >nul";
     Require(_wsystem(outsideCommand.c_str()) == 0);
-    {
-        char debugOut[1024];
-        const char* debugValue = realpath_nid_postfix((guest + "/outside-junction").c_str(), debugOut) ? debugOut : "NULL";
-    }
     Require(Resolves(guest + "/outside-junction", guest + "/outside-junction"));
     Require(RemoveDirectoryW(outsideJunction.c_str()) != 0);
+    const auto overlapOuter = outside / "overlap-outer";
+    const auto overlapInner = overlapOuter / "inner";
+    Require(std::filesystem::create_directories(overlapInner));
+    { std::ofstream file(overlapInner / "value.txt"); file << "overlap"; }
+    AddPathAlias_nid_no_patch("a", (overlapOuter.string() + "/").c_str());
+    AddPathAlias_nid_no_patch("long-name", outside.string().c_str());
+    const auto overlapJunction = directory / "overlap-junction";
+    const auto overlapCommand = L"cmd /c mklink /J \"" + overlapJunction.wstring() + L"\" \"" + overlapInner.wstring() + L"\" >nul";
+    Require(_wsystem(overlapCommand.c_str()) == 0);
+    Require(Resolves(guest + "/overlap-junction", "/a/inner"));
+    Require(Resolves("/a/inner/value.txt", "/a/inner/value.txt"));
+    Require(RemoveDirectoryW(overlapJunction.c_str()) != 0);
+    RemovePathAlias_nid_no_patch("a");
+    RemovePathAlias_nid_no_patch("long-name");
+    const auto siblingBase = plainOutside / "base";
+    const auto siblingOther = plainOutside / "base2";
+    Require(std::filesystem::create_directories(siblingBase));
+    Require(std::filesystem::create_directories(siblingOther));
+    AddPathAlias_nid_no_patch("realpath-sibling", siblingBase.string().c_str());
+    const auto siblingJunction = directory / "sibling-junction";
+    const auto siblingCommand = L"cmd /c mklink /J \"" + siblingJunction.wstring() + L"\" \"" + siblingOther.wstring() + L"\" >nul";
+    Require(_wsystem(siblingCommand.c_str()) == 0);
+    Require(Resolves(guest + "/sibling-junction", guest + "/sibling-junction"));
+    Require(RemoveDirectoryW(siblingJunction.c_str()) != 0);
+    RemovePathAlias_nid_no_patch("realpath-sibling");
     for (const auto& link : files) DeleteFileW(link.c_str());
     for (const auto& link : directories) RemoveDirectoryW(link.c_str());
 #endif
