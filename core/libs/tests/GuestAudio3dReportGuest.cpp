@@ -1,11 +1,15 @@
 #include "prx/libSceAudio3d/include/Audio3d.hpp"
 #include <array>
 #include <cerrno>
+#include <chrono>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <mutex>
 #include <stdexcept>
+#include <thread>
 
 #if defined(_WIN32)
 #ifndef NOMINMAX
@@ -28,6 +32,51 @@ void Require(bool value, const char* message) {
 int callReports = 0;
 
 void APS5_VABI ReportHandler(const Audio3dReport*, void*) { ++callReports; }
+
+struct ReportGate {
+    std::mutex mutex;
+    std::condition_variable condition;
+    bool entered = false;
+    bool release = false;
+    bool finished = false;
+    int calls = 0;
+};
+
+void APS5_VABI GatedReportHandler(const Audio3dReport*, void* data) {
+    auto& gate = *static_cast<ReportGate*>(data);
+    std::unique_lock lock(gate.mutex);
+    ++gate.calls;
+    gate.entered = true;
+    gate.condition.notify_all();
+    gate.condition.wait_for(lock, std::chrono::milliseconds(300), [&] { return gate.release; });
+    gate.finished = true;
+}
+
+void CheckUnregisterWaitsForInFlightReport() {
+    ReportGate gate;
+    std::uint64_t handle = 0;
+    Require(sceAudio3dReportRegisterHandler(0, GatedReportHandler, &gate, &handle) == 0, "gated handler registration failed");
+    std::thread reporter([] { sceAudio3dPortGetStatus(1, nullptr, nullptr, 0); });
+    {
+        std::unique_lock lock(gate.mutex);
+        Require(gate.condition.wait_for(lock, std::chrono::seconds(2), [&] { return gate.entered; }),
+            "the in-flight report did not reach the handler");
+    }
+    const int result = sceAudio3dReportUnregisterHandler(handle);
+    bool finished = false;
+    {
+        std::lock_guard lock(gate.mutex);
+        finished = gate.finished;
+        gate.release = true;
+    }
+    gate.condition.notify_all();
+    reporter.join();
+    Require(result == 0, "unregister of the gated handler failed");
+    Require(finished, "unregister returned before the in-flight handler finished");
+    sceAudio3dPortGetStatus(1, nullptr, nullptr, 0);
+    std::lock_guard lock(gate.mutex);
+    Require(gate.calls == 1, "an unregistered handler received a later report");
+}
 
 template <typename Action>
 void RequireThrows(Action action, const char* message) {
@@ -134,6 +183,8 @@ int main() {
     Require(sceAudio3dPortGetStatus(1, nullptr, nullptr, 0) == invalidPort && callReports == 1,
         "unregistered call handler received a report");
     Require(errno == 71, "call-handler failures changed errno");
+
+    CheckUnregisterWaitsForInFlightReport();
 
     std::puts("Audio3d report guest handle tests passed");
 }
