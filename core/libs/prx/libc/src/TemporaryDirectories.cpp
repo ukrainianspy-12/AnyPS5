@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <new>
 #include <string>
+#include <system_error>
 #ifndef _WIN32
 #include <sys/stat.h>
 #endif
@@ -80,7 +81,13 @@ extern "C" char* APS5_VABI MkdtempSeeded_nid_no_patch(char* pattern, std::uint64
 
 extern "C" char* APS5_VABI mkdtemp_nid_postfix(char* pattern) {
     if (!pattern) return Fail(14);
-    std::uint64_t seed = 0;
-    HostEntropy_nid_no_patch(&seed, sizeof(seed));
-    return MkdtempSeeded_nid_no_patch(pattern, seed);
+    try {
+        std::uint64_t seed = 0;
+        HostEntropy_nid_no_patch(&seed, sizeof(seed));
+        return MkdtempSeeded_nid_no_patch(pattern, seed);
+    } catch (const std::system_error&) {
+        return Fail(5);
+    } catch (const std::bad_alloc&) {
+        return Fail(12);
+    }
 }
