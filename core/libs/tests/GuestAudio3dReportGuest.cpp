@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <future>
 #include <mutex>
 #include <stdexcept>
 #include <thread>
@@ -38,44 +39,91 @@ struct ReportGate {
     std::condition_variable condition;
     bool entered = false;
     bool release = false;
-    bool finished = false;
     int calls = 0;
 };
 
-void APS5_VABI GatedReportHandler(const Audio3dReport*, void* data) {
+void APS5_VABI BlockingReportHandler(const Audio3dReport*, void* data) {
     auto& gate = *static_cast<ReportGate*>(data);
     std::unique_lock lock(gate.mutex);
     ++gate.calls;
     gate.entered = true;
     gate.condition.notify_all();
-    gate.condition.wait_for(lock, std::chrono::milliseconds(300), [&] { return gate.release; });
-    gate.finished = true;
+    gate.condition.wait(lock, [&] { return gate.release; });
 }
 
-void CheckUnregisterWaitsForInFlightReport() {
-    ReportGate gate;
-    std::uint64_t handle = 0;
-    Require(sceAudio3dReportRegisterHandler(0, GatedReportHandler, &gate, &handle) == 0, "gated handler registration failed");
-    std::thread reporter([] { sceAudio3dPortGetStatus(1, nullptr, nullptr, 0); });
-    {
-        std::unique_lock lock(gate.mutex);
-        Require(gate.condition.wait_for(lock, std::chrono::seconds(2), [&] { return gate.entered; }),
-            "the in-flight report did not reach the handler");
-    }
-    const int result = sceAudio3dReportUnregisterHandler(handle);
-    bool finished = false;
+void APS5_VABI CountingReportHandler(const Audio3dReport*, void* data) {
+    auto& gate = *static_cast<ReportGate*>(data);
+    std::lock_guard lock(gate.mutex);
+    ++gate.calls;
+}
+
+bool WaitForEntry(ReportGate& gate) {
+    std::unique_lock lock(gate.mutex);
+    return gate.condition.wait_for(lock, std::chrono::seconds(2), [&] { return gate.entered; });
+}
+
+void Release(ReportGate& gate) {
     {
         std::lock_guard lock(gate.mutex);
-        finished = gate.finished;
         gate.release = true;
     }
     gate.condition.notify_all();
+}
+
+bool ReturnedBeforeRelease(std::future<int>& result) {
+    return result.wait_for(std::chrono::milliseconds(300)) == std::future_status::ready;
+}
+
+bool CheckUnregisterDuringHandler() {
+    ReportGate gate;
+    std::uint64_t handle = 0;
+    Require(sceAudio3dReportRegisterHandler(0, BlockingReportHandler, &gate, &handle) == 0, "gated handler registration failed");
+    std::thread reporter([] { sceAudio3dPortGetStatus(1, nullptr, nullptr, 0); });
+    const bool entered = WaitForEntry(gate);
+    std::promise<int> promise;
+    auto result = promise.get_future();
+    std::thread unregisterer([&] { promise.set_value(sceAudio3dReportUnregisterHandler(handle)); });
+    const bool early = entered && ReturnedBeforeRelease(result);
+    Release(gate);
+    unregisterer.join();
     reporter.join();
-    Require(result == 0, "unregister of the gated handler failed");
-    Require(finished, "unregister returned before the in-flight handler finished");
+    const int unregistered = result.get();
+    Require(entered, "the in-flight report did not reach the handler");
+    Require(unregistered == 0, "unregister of the gated handler failed");
     sceAudio3dPortGetStatus(1, nullptr, nullptr, 0);
     std::lock_guard lock(gate.mutex);
     Require(gate.calls == 1, "an unregistered handler received a later report");
+    return early;
+}
+
+bool CheckUnregisterAfterSelection() {
+    ReportGate blocker;
+    ReportGate target;
+    std::uint64_t blockerHandle = 0;
+    std::uint64_t targetHandle = 0;
+    Require(sceAudio3dReportRegisterHandler(0, BlockingReportHandler, &blocker, &blockerHandle) == 0, "blocking handler registration failed");
+    Require(sceAudio3dReportRegisterHandler(0, CountingReportHandler, &target, &targetHandle) == 0, "target handler registration failed");
+    std::thread reporter([] { sceAudio3dPortGetStatus(1, nullptr, nullptr, 0); });
+    const bool entered = WaitForEntry(blocker);
+    std::promise<int> promise;
+    auto result = promise.get_future();
+    std::thread unregisterer([&] { promise.set_value(sceAudio3dReportUnregisterHandler(targetHandle)); });
+    const bool early = entered && ReturnedBeforeRelease(result);
+    Release(blocker);
+    unregisterer.join();
+    reporter.join();
+    const int unregistered = result.get();
+    Require(entered, "the selected dispatch did not reach its first handler");
+    Require(unregistered == 0, "unregister of the selected handler failed");
+    {
+        std::lock_guard lock(target.mutex);
+        Require(target.calls == 1, "the selected target handler was not invoked");
+    }
+    Require(sceAudio3dReportUnregisterHandler(blockerHandle) == 0, "blocking handler cleanup failed");
+    sceAudio3dPortGetStatus(1, nullptr, nullptr, 0);
+    std::lock_guard lock(target.mutex);
+    Require(target.calls == 1, "an unregistered handler received a later report");
+    return early;
 }
 
 template <typename Action>
@@ -184,7 +232,11 @@ int main() {
         "unregistered call handler received a report");
     Require(errno == 71, "call-handler failures changed errno");
 
-    CheckUnregisterWaitsForInFlightReport();
+    const bool earlyDuring = CheckUnregisterDuringHandler();
+    const bool earlyAfter = CheckUnregisterAfterSelection();
+    std::fprintf(stderr, "earlyDuring=%d earlyAfter=%d\n", earlyDuring ? 1 : 0, earlyAfter ? 1 : 0);
+    Require(!earlyDuring, "unregister returned while the handler was still executing");
+    Require(!earlyAfter, "unregister returned before the selected handler was invoked");
 
     std::puts("Audio3d report guest handle tests passed");
 }
