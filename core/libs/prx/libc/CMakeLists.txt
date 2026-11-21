@@ -230,6 +230,7 @@ target_sources(libc PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Environment.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Directory.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Filesystem.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/TemporaryDirectories.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/VersionedFilesystem.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/VersionedFilesystemCalls.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/AtomicWait.cpp
@@ -1578,6 +1579,16 @@ if(BUILD_TESTING)
     set_tests_properties(guest_realpath PROPERTIES TIMEOUT 20)
     if(WIN32)
         set_tests_properties(guest_realpath PROPERTIES ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:libc>")
+    endif()
+    add_test_executable(guest_mkdtemp_tests ${LIBS_INCLUDE_DIR}/tests/GuestMkdtemp.cpp)
+    target_include_directories(guest_mkdtemp_tests PRIVATE ${LIBS_INCLUDE_DIR})
+    target_link_libraries(guest_mkdtemp_tests PRIVATE libc)
+    configure_windows_unwind(guest_mkdtemp_tests)
+    add_test(NAME guest_mkdtemp COMMAND guest_mkdtemp_tests)
+    set_tests_properties(guest_mkdtemp PROPERTIES TIMEOUT 20)
+    if(WIN32)
+        set_tests_properties(guest_mkdtemp PROPERTIES ENVIRONMENT_MODIFICATION
             "PATH=path_list_prepend:$<TARGET_FILE_DIR:libc>")
     endif()
     add_test_executable(guest_strxfrm_boundary_tests ${LIBS_INCLUDE_DIR}/tests/GuestStrxfrmBoundary.cpp)
