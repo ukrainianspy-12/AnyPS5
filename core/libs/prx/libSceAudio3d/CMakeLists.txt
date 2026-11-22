@@ -37,6 +37,17 @@ if(BUILD_TESTING)
             "PATH=path_list_prepend:$<TARGET_FILE_DIR:libSceAudio3d>;PATH=path_list_prepend:$<TARGET_FILE_DIR:libc>")
     endif()
 
+    add_test_executable(guest_audio3d_flush_report_tests ${LIBS_INCLUDE_DIR}/tests/GuestAudio3dFlushReport.cpp)
+    target_include_directories(guest_audio3d_flush_report_tests PRIVATE ${LIBS_INCLUDE_DIR})
+    target_link_libraries(guest_audio3d_flush_report_tests PRIVATE libSceAudio3d libSceAudioOut libc)
+    configure_windows_unwind(guest_audio3d_flush_report_tests)
+    add_test(NAME guest_audio3d_flush_report COMMAND guest_audio3d_flush_report_tests)
+    set_tests_properties(guest_audio3d_flush_report PROPERTIES TIMEOUT 20)
+    if(WIN32)
+        set_tests_properties(guest_audio3d_flush_report PROPERTIES ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:libSceAudio3d>;PATH=path_list_prepend:$<TARGET_FILE_DIR:libc>")
+    endif()
+
     add_test_executable(guest_audio3d_parameters_tests ${LIBS_INCLUDE_DIR}/tests/GuestAudio3dParameters.cpp)
     target_include_directories(guest_audio3d_parameters_tests PRIVATE ${LIBS_INCLUDE_DIR})
     target_link_libraries(guest_audio3d_parameters_tests PRIVATE libSceAudio3d libc)
