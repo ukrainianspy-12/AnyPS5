@@ -449,12 +449,17 @@ void CheckObjectAttributes() {
     Require(sceAudio3dObjectSetAttributes(0, 1, 0, &attribute) == INVALID_PARAMETER, "zero attributes");
     Require(sceAudio3dObjectSetAttributes(0, 1, 1, nullptr) == INVALID_PARAMETER, "null array");
     Require(sceAudio3dObjectSetAttributes(0, 2, 1, &attribute) == INVALID_OBJECT, "unreserved object");
-    Require(sceAudio3dObjectSetAttributes(0, 1, 1, &attribute) == 0, "set one attribute");
-    Require(sceAudio3dObjectSetAttributes(0, 0x80000001, 1, &attribute) == 0, "the top bit of the object id is ignored");
+    RequireThrows([&] { sceAudio3dObjectSetAttributes(0, 1, 1, &attribute); }, "an unsupported object attribute throws");
+    RequireThrows([&] { sceAudio3dObjectSetAttributes(0, 0x80000001, 1, &attribute); }, "unsupported attributes throw after object-id masking");
     for (const std::uint32_t attribute_id : {0u, 12u, 0x10001u, 0x20000u}) {
         Audio3dAttribute unknown{attribute_id, 0, &value, sizeof(value)};
         Require(sceAudio3dObjectSetAttributes(0, 1, 1, &unknown) == INVALID_PARAMETER, "object attribute ids are 1 to 11");
         Require(sceAudio3dObjectSetAttributes(0, 2, 1, &unknown) == INVALID_PARAMETER, "the ids are checked before the object");
+    }
+    for (const std::uint32_t attribute_id : {2u, 3u, 4u, 5u, 6u, 8u, 9u, 10u, 11u}) {
+        Audio3dAttribute unsupported{attribute_id, 0, &value, sizeof(value)};
+        RequireThrows([&] { sceAudio3dObjectSetAttributes(0, 1, 1, &unsupported); }, "every unimplemented object attribute throws");
+        Require(sceAudio3dObjectSetAttributes(0, 2, 1, &unsupported) == INVALID_OBJECT, "the object is checked before the unsupported attribute");
     }
     Audio3dAttribute reset{7, 0, nullptr, 0};
     Require(sceAudio3dObjectSetAttributes(0, 1, 1, &reset) == 0, "reset state takes a null value");

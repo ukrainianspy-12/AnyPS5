@@ -585,18 +585,24 @@ int APS5_VABI sceAudio3dObjectSetAttributes(uint32_t port_id, uint32_t object_id
             return copied;
         };
         bool missingValue = false;
+        std::uint32_t unsupported = 0;
         for (std::uint64_t i = 0; i < num_attributes; ++i) {
             Audio3dAttribute attribute{};
             const auto* source = reinterpret_cast<const void*>(address + i * sizeof(Audio3dAttribute));
             if (!copyIn(&attribute, source, sizeof(attribute))) return AUDIO3D_ERROR_INVALID_PARAMETER;
             if (attribute.attribute_id < AUDIO3D_OBJECT_ATTRIBUTE_PCM || attribute.attribute_id > AUDIO3D_OBJECT_ATTRIBUTE_OUTPUT_ROUTE) return AUDIO3D_ERROR_INVALID_PARAMETER;
             if (attribute.attribute_id != AUDIO3D_OBJECT_ATTRIBUTE_RESET_STATE && attribute.value == nullptr) missingValue = true;
-            if (attribute.attribute_id != AUDIO3D_OBJECT_ATTRIBUTE_PCM) continue;
+            if (attribute.attribute_id == AUDIO3D_OBJECT_ATTRIBUTE_RESET_STATE) continue;
+            if (attribute.attribute_id != AUDIO3D_OBJECT_ATTRIBUTE_PCM) {
+                unsupported = attribute.attribute_id;
+                continue;
+            }
             Audio3dPcm pcm{};
             if (attribute.value == nullptr || !copyIn(&pcm, attribute.value, sizeof(pcm)) || pcm.num_samples == 0 || pcm.format > AUDIO3D_FORMAT_FLOAT) return AUDIO3D_ERROR_INVALID_PARAMETER;
         }
         if (!g_port.objects.contains(object_id & AUDIO3D_OBJECT_ID_MASK)) return AUDIO3D_ERROR_INVALID_OBJECT;
         if (missingValue) return AUDIO3D_ERROR_INVALID_PARAMETER;
+        if (unsupported != 0) Unsupported("sceAudio3dObjectSetAttributes", "attribute " + std::to_string(unsupported));
         return 0;
     }();
     Report(port_id, object_id, result, __func__, "HOA", port_id, object_id, num_attributes, attribute_array);
