@@ -37,6 +37,11 @@ static constexpr int PORT_TYPE_SYS = 7;
 static constexpr int PORT_TYPE_VIBRATION = 10;
 static constexpr int PORT_TYPE_AUDIO3D = 126;
 static constexpr int PORT_TYPE_AUX = 127;
+static std::atomic<int> g_outputFailAfter{-1};
+
+extern "C" void AudioOutFailOutputAfter_nid_no_patch(int after) {
+    g_outputFailAfter.store(after >= 0 ? after : -1);
+}
 
 static constexpr int PORTS_MAX = 32;
 static constexpr int DEFAULT_VOLUME = 32768;
@@ -539,6 +544,13 @@ int APS5_VABI sceAudioOutOutput(int handle, const void* ptr) try {
     Port* port = getPort(handle);
     if (port == nullptr) {
         return -2144993277;
+    }
+    int remaining = g_outputFailAfter.load();
+    if (remaining == 0) {
+        g_outputFailAfter.store(-1);
+        return -2144993277;
+    }
+    while (remaining > 0 && !g_outputFailAfter.compare_exchange_weak(remaining, remaining - 1)) {
     }
 
     reopenStoppedDevice(*port);
