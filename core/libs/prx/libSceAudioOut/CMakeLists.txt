@@ -19,6 +19,9 @@ target_include_directories(libSceAudioOut PRIVATE
         ${ANYPS5_SDL2_INCLUDE_DIR}
 )
 target_link_libraries(libSceAudioOut PRIVATE libc libkernel libScePad SDL2-static)
+if(BUILD_TESTING)
+    target_compile_definitions(libSceAudioOut PRIVATE AUDIO_OUT_FAILURE_TESTS)
+endif()
 configure_windows_unwind(libSceAudioOut)
 
 if(BUILD_TESTING)

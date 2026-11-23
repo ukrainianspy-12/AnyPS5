@@ -19,7 +19,9 @@
 #include <cstdlib>
 #endif
 
+#ifdef AUDIO_OUT_FAILURE_TESTS
 extern "C" void AudioOutFailOutputAfter_nid_no_patch(int after);
+#endif
 
 namespace {
 
@@ -96,16 +98,23 @@ int main() {
     Require(sceAudio3dPortAdvance(0) == 0, "advance third bed");
     RequireLevel(3);
 
+#ifdef AUDIO_OUT_FAILURE_TESTS
     AudioOutFailOutputAfter_nid_no_patch(1);
     Require(sceAudio3dPortFlush(0) < 0, "second output failure must be returned");
     RequireLevel(2);
     Append(expected, 12000, -6000);
-
     AudioOutFailOutputAfter_nid_no_patch(-1);
+#endif
     Require(sceAudio3dPortFlush(0) == 0, "retry after clearing failure");
     RequireLevel(0);
+#ifdef AUDIO_OUT_FAILURE_TESTS
     Append(expected, 8000, 4000);
     Append(expected, 4000, 1000);
+#else
+    Append(expected, 12000, -6000);
+    Append(expected, 8000, 4000);
+    Append(expected, 4000, 1000);
+#endif
 
     Require(sceAudio3dPortClose(0) == 0, "close port");
     Require(sceAudio3dTerminate() == 0, "terminate");
