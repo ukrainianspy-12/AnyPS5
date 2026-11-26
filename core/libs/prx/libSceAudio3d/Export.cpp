@@ -586,10 +586,12 @@ int APS5_VABI sceAudio3dPortFlush(uint32_t port_id) {
         std::vector<int> associated;
         bool advance = false;
         std::uint64_t generation = 0;
+        std::uint32_t granularity = 0;
         {
             std::lock_guard lock(g_mutex);
             if (!PortIsOpen(port_id)) return AUDIO3D_ERROR_INVALID_PORT;
             generation = g_port.generation;
+            granularity = g_port.granularity;
             handle = g_port.audio_out_handle;
             advance = g_port.mixed.empty() && !g_port.beds.empty();
             for (auto& entry : g_port.audio_out_ports) {
@@ -616,7 +618,7 @@ int APS5_VABI sceAudio3dPortFlush(uint32_t port_id) {
         }
         if (handle == 0) {
             const int opened = sceAudioOutOpen(AUDIO3D_USER_ID_SYSTEM, AUDIO3D_AUDIO_OUT_PORT_TYPE, 0,
-                g_port.granularity, AUDIO3D_SAMPLE_RATE, AUDIO3D_AUDIO_OUT_FORMAT_STEREO);
+                granularity, AUDIO3D_SAMPLE_RATE, AUDIO3D_AUDIO_OUT_FORMAT_STEREO);
             if (opened < 0) return opened;
             bool closeOpened = false;
             {
